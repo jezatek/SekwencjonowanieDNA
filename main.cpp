@@ -1,15 +1,31 @@
-#include "rapidxml-1.13/rapidxml.hpp"
-#include "rapidxml-1.13/rapidxml_utils.hpp"
+#include <cstdlib>
+#include <cstdio>
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <string>
+#include <algorithm>
+#include <ctime>
+#include <chrono>
+#include <numeric>
+#include "rapidxml-1.13/rapidxml.hpp"
+#include "rapidxml-1.13/rapidxml_utils.hpp"
+
+#define CYCLES_NO_CHANGE 70
+#define N_Start_Population 2000
+#define N_offspring 2000
+#define N_Mutation 3000
 
 using namespace std;
 
-void ReadFromXML(std::vector<std::string>& cells1, std::vector<std::string>& cells2, string &key, int &length, string& start, string& pattern1, string& pattern2)
+
+int length = 0;
+string pattern1, pattern2;
+
+void ReadFromXML(std::vector<std::string>& cells1, std::vector<std::string>& cells2, string& key, int& length, string& start, string& pattern1, string& pattern2)
 {
     // Load the XML file into a string
-    rapidxml::file<> xmlFile("bio.xml");
+    rapidxml::file<> xmlFile("bio_szukanie5.xml");
     rapidxml::xml_document<> doc;
     doc.parse<0>(xmlFile.data());
 
@@ -50,265 +66,208 @@ void ReadFromXML(std::vector<std::string>& cells1, std::vector<std::string>& cel
     }
 }
 
-void DisplayXMLData(std::vector<std::string>& cells1, std::vector<std::string>& cells2, string& key, int& length, string& start, string& pattern1, string& pattern2)
-{
-    cout << "Key: " << key << endl;
-    cout << "Length: " << length << endl;
-    cout << "Start: " << start << endl;
-    cout << "Pattern1: " << pattern1 << endl;
-    cout << "Pattern2: " << pattern2 << endl;
-
-    cout << endl;
-    cout << endl;
-
-    std::cout << "Cells from the first probe:" << std::endl;
-    for (int i = 0; i < cells1.size(); i++)
-        cout << cells1[i] << endl;
-
-    cout << endl;
-    cout << endl;
-
-    std::cout << "Cells from the second probe:" << std::endl;
-    for (int i = 0; i < cells2.size(); i++)
-        cout << cells2[i] << endl;
-}
-
-string EvenStringStart(string &start)
-{
-    string even_string = "";
-    for (int i = 0; i < start.size(); i++)
-    {
-        if (i % 2 == 0)
-            even_string += start[i];
-        else if(i % 2 == 1 && i != start.size() - 1)
-            even_string += 'X';
+int overlap(const string& a, const string& b) {
+    int max_overlap = min(a.size(), b.size());
+    for (int i = max_overlap; i > 0; --i) {
+        if (a.substr(a.size() - i) == b.substr(0, i)) {
+            return i;
+        }
     }
-    return even_string;
+    return -1;
 }
 
-string OddStringStart(string& start)
-{
-    string even_string = "";
-    for (int i = 0; i < start.size(); i++)
-    {
-        if (i % 2 == 1)
-            even_string += start[i];
-        else if (i % 2 == 0 && i != start.size() - 1)
-            even_string += 'X';
+int F(const vector<int>& order, const vector<string>& oligos) {
+    int os = order.size();
+    int total_length1 = oligos[order[0]].size();
+    int total_length2 = oligos[order[os/2]].size();
+    for (size_t i = 1; i < os/2; ++i) {
+        total_length1 += oligos[order[i]].size() - overlap(oligos[order[i - 1]], oligos[order[i]]);
     }
-    return even_string;
+    for (size_t i = os/2 + 1; i < os; ++i) {
+        total_length2 += oligos[order[i]].size() - overlap(oligos[order[i - 1]], oligos[order[i]]);
+    }
+    return max(total_length1, total_length2) + 1;
 }
 
-int WhereInVector(int element, vector<int> &vec)
+int WhereInVector(int element, vector<int>& vec)
 {
-    auto it = std::find(vec.begin(), vec.end(), element);
-    int index = std::distance(vec.begin(), it);
+    auto it = find(vec.begin(), vec.end(), element);
+    int index = distance(vec.begin(), it);
     return index;
 }
 
-bool EvenValidation(string &even_string, string& odd_string, vector<string> &cells2, vector<int> &used_cells2)
+vector<int> RandomOligos(const vector<string>& oligos)
 {
-    for (int i = 0; i < cells2.size(); i++)
-    {
-        if (WhereInVector(i, used_cells2) != used_cells2.size())
-            continue;
+    int number_of_random_oligos = length - pattern1.size() + 1;
 
-        string validator = cells2[i];
-        if (even_string[even_string.size() - 1] == validator[validator.size() - 1])
-            continue;
-        for (int j = validator.size() - 2; j >= 0; j = j - 2)
-        {
-            if (odd_string[j] != validator[j])
-                continue;
+    vector<int> indexes(oligos.size());
+    iota(indexes.begin(), indexes.end(), 0);
+
+    random_shuffle(indexes.begin(), indexes.end());
+
+    vector<int> order(number_of_random_oligos);
+    for (int i = 0; i < number_of_random_oligos; i++)
+        order[i] = indexes[i];
+
+    return order;
+}
+
+pair<int, vector<int>> Generate2(const vector<string>& oligos) {
+    vector<int> order = RandomOligos(oligos);
+    return { F(order, oligos), order };
+
+
+    //vector<int> order (oligos.size());
+    //iota(order.begin(), order.end(), 0);
+    //random_shuffle(order.begin(), order.end());
+    //return { F(order, oligos), order };
+}
+
+vector<pair<int, vector<int>>> Generation(const vector<string>& oligos, int n) {
+    vector<pair<int, vector<int>>> population;
+    while (n--) population.push_back(Generate2(oligos));
+    return population;
+}
+
+void mutate(vector<pair<int, vector<int>>>& population, int n) {
+    while (n--) {
+        int idx = rand() % population.size();
+        int pos1 = rand() % population[idx].second.size();
+        int pos2 = rand() % population[idx].second.size();
+        swap(population[idx].second[pos1], population[idx].second[pos2]);
+    }
+}
+
+void Crossover(const vector<pair<int, vector<int>>>& population, int parent1, int parent2, const vector<string>& oligos, vector<pair<int, vector<int>>>& offspring, int idx) {
+    const vector<int>& p1 = population[parent1].second;
+    const vector<int>& p2 = population[parent2].second;
+    int size = length - pattern1.size() + 1;
+
+    vector<int> child1(size, -1), child2(size, -1);
+    vector<bool> in_child1(oligos.size(), false), in_child2(oligos.size(), false);
+
+    int start = rand() % size;
+    int end = start + rand() % (size - start);
+
+    for (int i = start; i <= end; ++i) {
+        child1[i] = p1[i];
+        in_child1[p1[i]] = true;
+        child2[i] = p2[i];
+        in_child2[p2[i]] = true;
+    }
+
+    int fill_pos1 = 0, fill_pos2 = 0;
+    for (int i = 0; i < size; ++i) {
+        if (child1[i] == -1) {
+            while (in_child1[p2[fill_pos1]]) fill_pos1++;
+            child1[i] = p2[fill_pos1++];
         }
-
-        used_cells2.push_back(i);
-        return true;
-    }
-    return false;
-}
-
-bool OddValidation(string& even_string, string& odd_string, vector<string>& cells2, vector<int>& used_cells2)
-{
-    for (int i = 0; i < cells2.size(); i++)
-    {
-        if (WhereInVector(i, used_cells2) != used_cells2.size())
-            continue;
-
-        string validator = cells2[i];
-        if (odd_string[odd_string.size() - 1] == validator[validator.size() - 1])
-            continue;
-        for (int j = validator.size() - 2; j >= 0; j = j - 2)
-        {
-            if (even_string[j] != validator[j])
-                continue;
+        if (child2[i] == -1) {
+            while (in_child2[p1[fill_pos2]]) fill_pos2++;
+            child2[i] = p1[fill_pos2++];
         }
-
-        used_cells2.push_back(i);
-        return true;
     }
-    return false;
+
+    offspring[2 * idx] = { F(child1, oligos), child1 };
+    offspring[2 * idx + 1] = { F(child2, oligos), child2 };
 }
 
-bool AddToEven(string& even_string, string adder)
-{
-    for (int i = 2; i < even_string.size(); i = i + 2)
-    {
-        if (even_string[i] != adder[i - 2])
-            return false;
+bool Stop(int best) {
+    static unsigned short countdown = CYCLES_NO_CHANGE;
+    static int result = best;
+    if (best == result) countdown--;
+    else {
+        countdown = CYCLES_NO_CHANGE;
+        result = best;
     }
-    even_string += 'X';
-    even_string += adder[adder.size() - 1];
-    return true;
+    return !countdown;
 }
 
-bool AddToOdd(string& odd_string, string adder)
-{
-    for (int i = 3; i < odd_string.size(); i = i + 2)
-    {
-        if (odd_string[i] != adder[i - 2])
-            return false;
-    }
-    odd_string += 'X';
-    odd_string += adder[adder.size() - 1];
-    return true;
+int choice(int k) {
+    return (int)((double)rand() / RAND_MAX * rand() / RAND_MAX * k);
 }
 
-void Subtract(string& str, vector<int>& used_cells1)
-{
-    str.pop_back();
-    str.pop_back();
-    used_cells1.pop_back();
+void selection_for_sorted2(vector<pair<int, vector<int>>>& population) {
+    vector<pair<int, vector<int>>> new_population(N_Start_Population);
+    for (int i = 0; i < N_Start_Population; ++i) {
+        int pos = choice(population.size());
+        new_population[i] = population[pos];
+    }
+    population = move(new_population);
 }
 
-bool GetSequenceDFS(string& even_string, string& odd_string, vector<string>& cells1, vector<string>& cells2, vector<int>& used_cells1, vector<int>& used_cells2, int& length)
-{
-    if (even_string.size() == length || odd_string.size() == length)
-        return true;
-
-    bool even_turn = true;
-    if (odd_string.size() < even_string.size())
-        even_turn = false;
-
-    if (even_turn == true)
-    {
-        for (int i = 0; i < cells1.size(); i++)
-        {
-            if (WhereInVector(i, used_cells1) != used_cells1.size())
-                continue;
-
-            string adder = cells1[i];
-            bool even_adding_success = AddToEven(even_string, adder);
-            if (even_adding_success == true)
-            {
-                used_cells1.push_back(i);
-                bool even_validation = EvenValidation(even_string, odd_string, cells2, used_cells2);
-                if (even_validation == true)
-                {
-                    bool success = GetSequenceDFS(even_string, odd_string, cells1, cells2, used_cells1, used_cells2, length);
-                    if (success == true)
-                        return true;
-                    else
-                    {
-                        Subtract(even_string, used_cells1);
-                        used_cells2.pop_back();
-                    }
-                }
-                else
-                    Subtract(even_string, used_cells1);
-            }
-        }
-        return false;
+void Reproduction(vector<pair<int, vector<int>>>& population, int nroffspring, const vector<string>& oligos) {
+    vector<pair<int, vector<int>>> offspring(nroffspring);
+    for (int i = 0; i < nroffspring / 2; ++i) {
+        int choice1 = choice(population.size());
+        int choice2 = choice(population.size());
+        while (choice1 == choice2) choice2 = choice(population.size());
+        Crossover(population, choice1, choice2, oligos, offspring, i);
     }
-    else
-    {
-        for (int i = 0; i < cells1.size(); i++)
-        {
-            if (WhereInVector(i, used_cells1) != used_cells1.size())
-                continue;
-
-            string adder = cells1[i];
-            bool odd_adding_success = AddToOdd(odd_string, adder);
-            if (odd_adding_success == true)
-            {
-                used_cells1.push_back(i);
-                bool odd_validation = OddValidation(even_string, odd_string, cells2, used_cells2);
-                if (odd_validation == true)
-                {
-                    bool success = GetSequenceDFS(even_string, odd_string, cells1, cells2, used_cells1, used_cells2, length);
-                    if (success == true)
-                        return true;
-                    else
-                    {
-                        Subtract(odd_string, used_cells1);
-                        used_cells2.pop_back();
-                    }
-                }
-                else
-                    Subtract(odd_string, used_cells1);
-            }
-        }
-        return false;
-    }
-    return false;
+    population.insert(population.end(), offspring.begin(), offspring.end());
 }
 
-int main() /////////////////////////////////////////usunac samego siebie - ominonukleotyd startowy
-{
+int Genetic(const vector<string>& oligos) {
+    vector<pair<int, vector<int>>> population = Generation(oligos, N_Start_Population);
+    sort(population.begin(), population.end());
+
+    int iteration = 0;
+    auto start = chrono::system_clock::now();
+    while (!Stop(population[0].first)) {   
+        if (iteration % 10 == 0)
+            cout << iteration << " " << population[0].first << endl;
+        Reproduction(population, N_offspring, oligos);
+        mutate(population, N_Mutation);
+        sort(population.begin(), population.end());
+        selection_for_sorted2(population);
+        sort(population.begin(), population.end());
+        iteration++;
+    }
+    auto end = chrono::system_clock::now();
+    chrono::duration<double> elapsed_seconds = end - start;
+    cout << "end time: " << elapsed_seconds.count() << endl << "result: " << population[0].first << "\n";
+    return population[0].first;
+}
+
+int main(int argc, char* argv[]) {
+    srand(time(0));
+
     string key;
-    int length = 0;
+    //int length = 0;
     string start;
-    string pattern1, pattern2;
+    //string pattern1, pattern2;
     vector<string> cells1;
     vector<string> cells2;
 
     ReadFromXML(cells1, cells2, key, length, start, pattern1, pattern2);
 
-    vector<int> used_cells1;
-    vector<int> used_cells2 = {1,2,3,4,5};
+    //int N_Oligos = atoi(argv[1]);
+    //char* filename = argv[2];
 
-    string even_string = EvenStringStart(start);
-    string odd_string = OddStringStart(start);
+    //vector<string> oligos(N_Oligos);
+    //ifstream odczyt(filename);
 
-    //DisplayXMLData(cells1, cells2, key, length, start, pattern1, pattern2);
 
-    cout << "start:       " << start << endl;
-    cout << "even_string: " << even_string << endl;
-    cout << "odd_string:  " << odd_string << endl;
+    vector<string> oligos = cells1;
 
 
 
+    //vector<string> test = {"AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG"};
+    //vector<int> random_oligos = RandomOligos(test);
+    //for (int i = 0; i < random_oligos.size(); i++)
+    //    cout << random_oligos[i] << endl;
 
-
-    //cout << "even_string.size(): " << even_string.size() << endl;
-    cout << "cells1[0].size(): " << cells1[0].size() << endl;
-    cout << "cells2[0].size(): " << cells2[0].size() << endl;
-
-    cout << "cells1[0]: " << cells1[0] << endl;
-    cout << "cells2[0]: " << cells2[0] << endl;
-
-    //cout << WhereInVector(6,used_cells2) << endl;
-
-    //cout << "Validation: " << Validation(cells1[0], cells2, used_cells2) << endl;
-    //cout << "Validation: " << Validation(cells1[0], cells2, used_cells2) << endl;
-    //cout << "Validation: " << Validation(cells1[0], cells2, used_cells2) << endl;
-
-    //cout << "used_cells1.size(): " << used_cells1.size() << endl;
-    //cout << "used_cells2.size(): " << used_cells2.size() << endl;
+    //vector<string> test = {"AAA", "AAB", "ABB", "AXT", "GXC", "GXA", "GGG"};
+    //cout << overlap(test[3], test[5]) << endl;
 
 
 
+    //for (int i = 0; i < N_Oligos; i++)
+    //    odczyt >> oligos[i];
+    //odczyt.close();
 
-
-    bool success = GetSequenceDFS(even_string, odd_string, cells1, cells2, used_cells1, used_cells2, length);
-    cout << "success: " << success << endl;
-    cout << "even_string: " << even_string << endl;
-    cout << "odd_string:  " << odd_string << endl;
-
-
-
-
-
+    cout << "Rozpoczynam Genetyczny" << "\n";
+    Genetic(oligos);
 
     return 0;
 }
