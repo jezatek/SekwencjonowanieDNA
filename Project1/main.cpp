@@ -61,14 +61,14 @@ void DisplayXMLData(std::vector<std::string>& cells1, std::vector<std::string>& 
     cout << endl;
     cout << endl;
 
-    std::cout << "Cells from the first probe:" << std::endl;
+    cout << "Cells from the first probe:" << endl;
     for (int i = 0; i < cells1.size(); i++)
         cout << cells1[i] << endl;
 
     cout << endl;
     cout << endl;
 
-    std::cout << "Cells from the second probe:" << std::endl;
+    cout << "Cells from the second probe:" << endl;
     for (int i = 0; i < cells2.size(); i++)
         cout << cells2[i] << endl;
 }
@@ -80,7 +80,7 @@ string EvenStringStart(string &start)
     {
         if (i % 2 == 0)
             even_string += start[i];
-        else
+        else if(i % 2 == 1 && i != start.size() - 1)
             even_string += 'X';
     }
     return even_string;
@@ -93,42 +93,146 @@ string OddStringStart(string& start)
     {
         if (i % 2 == 1)
             even_string += start[i];
-        else
+        else if (i % 2 == 0 && i != start.size() - 1)
             even_string += 'X';
     }
     return even_string;
 }
 
-/*
-bool EvenValidation(string &even_string, string& odd_string, vector<string> &cells2, vector<int> &used_cells2)
+int WhereInVector(int element, vector<int> &vec)
+{
+    auto it = find(vec.begin(), vec.end(), element);
+    int index = distance(vec.begin(), it);
+    return index;
+}
+
+bool Validation(string &even_string, string& odd_string, vector<string> &cells2, vector<int> &used_cells2)
 {
     for (int i = 0; i < cells2.size(); i++)
     {
-        if(used_cells2[i] == 0)
-
+        if (WhereInVector(i, used_cells2) != used_cells2.size())
+            continue;
 
         string validator = cells2[i];
-        if (even_string[even_string.size() - 1] == validator[validator.size() - 1])
-            return false;
-        for (int j = validator.size() - 2; j >= 0; j = j - 2)
+        if (even_string[even_string.size() - 1] != validator[validator.size() - 1])
+            continue;
+        for (int j = 0; j < validator.size(); j += 2)
         {
-            if (odd_string[j] != validator[j])
-                return false;
+            if (odd_string[odd_string.size() - validator.size() + 1 + j] != validator[j])
+                continue;
         }
+
+        used_cells2.push_back(i);
+        return true;
     }
-    return true;
+    return false;
 }
-*/
 
-/*
-if (even_string[even_string.size() - 1] == cells2[i][cells2[i].size() - 1] and used_cells2[i] == 0)
+bool Add(string& odd_string, string adder)
 {
-    used_cells2[i] = 1;
+    int os = odd_string.size(), as = adder.size();
+    for (int i = 0; i < as - 2; i = i + 2)
+    {
+        char a = odd_string[os - as + i + 2], b = adder[i];
+        if (odd_string[os - as + i + 2] != adder[i])
+            return false;
+    }
+    odd_string += 'X';
+    odd_string += adder[adder.size() - 1];
     return true;
 }
-*/
 
-int main() 
+void Subtract(string& str, vector<int>& used_cells1)
+{
+    str.pop_back();
+    str.pop_back();
+    used_cells1.pop_back();
+}
+
+bool GetSequenceDFS(string& even_string, string& odd_string, vector<string>& cells1, vector<string>& cells2, vector<int>& used_cells1, vector<int>& used_cells2, int& length)
+{
+    //cout << "even_string: " << even_string << endl;
+    //cout << "odd_string:  " << odd_string << endl;
+
+    if (even_string.size() == length || odd_string.size() == length)
+        return true;
+
+    bool even_turn = true;
+    if (odd_string.size() < even_string.size())
+        even_turn = false;
+
+    if (even_turn == true)
+    {
+        //cout << "tutaj11" << endl;
+        for (int i = 0; i < cells1.size(); i++)
+        {
+            if (WhereInVector(i, used_cells1) != used_cells1.size())
+                continue;
+
+            //cout << "tutaj12" << endl;
+            string adder = cells1[i];
+            bool even_adding_success = Add(even_string, adder);
+            if (even_adding_success == true)
+            {
+                //cout << "tutaj13" << endl;
+                used_cells1.push_back(i);
+                bool even_validation = Validation(even_string, odd_string, cells2, used_cells2);
+                if (even_validation == true)
+                {
+                    //cout << "tutaj14" << endl;
+                    bool success = GetSequenceDFS(even_string, odd_string, cells1, cells2, used_cells1, used_cells2, length);
+                    if (success == true)
+                        return true;
+                    else
+                    {
+                        Subtract(even_string, used_cells1);
+                        used_cells2.pop_back();
+                    }
+                }
+                else
+                    Subtract(even_string, used_cells1);
+            }
+        }
+        return false;
+    }
+    else
+    {
+        //cout << "tutaj21" << endl;
+        for (int i = 0; i < cells1.size(); i++)
+        {
+            if (WhereInVector(i, used_cells1) != used_cells1.size())
+                continue;
+
+            //cout << "tutaj22" << endl;
+            string adder = cells1[i];
+            bool odd_adding_success = Add(odd_string, adder);
+            if (odd_adding_success == true)
+            {
+                //cout << "tutaj23" << endl;
+                used_cells1.push_back(i);
+                bool odd_validation = Validation(odd_string, even_string, cells2, used_cells2);
+                if (odd_validation == true)
+                {
+                    //cout << "tutaj24" << endl;
+                    bool success = GetSequenceDFS(even_string, odd_string, cells1, cells2, used_cells1, used_cells2, length);
+                    if (success == true)
+                        return true;
+                    else
+                    {
+                        Subtract(odd_string, used_cells1);
+                        used_cells2.pop_back();
+                    }
+                }
+                else
+                    Subtract(odd_string, used_cells1);
+            }
+        }
+        return false;
+    }
+    return false;
+}
+
+int main()
 {
     string key;
     int length = 0;
@@ -162,12 +266,34 @@ int main()
     cout << "cells1[0]: " << cells1[0] << endl;
     cout << "cells2[0]: " << cells2[0] << endl;
 
+    //cout << WhereInVector(6,used_cells2) << endl;
+
     //cout << "Validation: " << Validation(cells1[0], cells2, used_cells2) << endl;
     //cout << "Validation: " << Validation(cells1[0], cells2, used_cells2) << endl;
     //cout << "Validation: " << Validation(cells1[0], cells2, used_cells2) << endl;
 
     //cout << "used_cells1.size(): " << used_cells1.size() << endl;
     //cout << "used_cells2.size(): " << used_cells2.size() << endl;
+
+
+
+    cout << endl;
+    cout << endl;
+
+    bool success = GetSequenceDFS(even_string, odd_string, cells1, cells2, used_cells1, used_cells2, length);
+    cout << "success: " << success << endl;
+    
+    
+    //string test = "AXAXGXAXCXGXCXCXAXT";
+    //cout << "AddToOdd: " << AddToOdd(odd_string, test) << endl;
+    cout << "even_string: " << even_string << endl;
+    cout << "odd_string:  " << odd_string << endl;
+    //cout << "test:        " << test << endl;
+
+
+
+
+
 
     return 0;
 }
