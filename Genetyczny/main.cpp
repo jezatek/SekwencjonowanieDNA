@@ -25,7 +25,7 @@ string pattern1, pattern2;
 void ReadFromXML(std::vector<std::string>& cells1, std::vector<std::string>& cells2, string& key, int& length, string& start, string& pattern1, string& pattern2)
 {
     // Load the XML file into a string
-    rapidxml::file<> xmlFile("bio_szukanie5.xml");
+    rapidxml::file<> xmlFile("bio_positiv.xml");
     rapidxml::xml_document<> doc;
     doc.parse<0>(xmlFile.data());
 
